@@ -19,3 +19,7 @@ touch ~/.config/nvim/vim-plug/plugins.vim
 
 echo "source $HOME/.config/nvim/vim-plug/plugins.vim">>init.vim
 
+git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+
+
+
