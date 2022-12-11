@@ -77,7 +77,19 @@ ZSH_THEME="powerlevel10k/powerlevel10k"
 # Custom plugins may be added to $ZSH_CUSTOM/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
+plugins=(git 
+  zsh-autosuggestions 
+  zsh-syntax-highlighting 
+  zsh-completions 
+  zsh-history-substring-search
+  zsh-interactive-cd
+  zsh-navigation-tools
+  zsh-autopair
+  zsh-256color
+  python
+  pip
+  pipenv
+  ) 
 
 source $ZSH/oh-my-zsh.sh
 
@@ -134,7 +146,8 @@ unset __conda_setup
 # <<< conda initialize <<<
 
 alias code='open -a "Visual Studio Code"' # open file or folder in VSCode e.g. code ~/.zshrc
-
+alias nv='nvim' 
 
 alias prod='gcloud container clusters get-credentials prod --zone=us-central1-a'
 source ~/powerlevel10k/powerlevel10k.zsh-theme
+source /usr/local/share/zsh-history-substring-search/zsh-history-substring-search.zsh
