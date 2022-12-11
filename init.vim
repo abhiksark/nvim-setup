@@ -10,7 +10,7 @@ set number " Shows the line numbers
 set splitbelow splitright " Change the split screen behavior
 set title " Show file title
 set wildmenu " Show a more advance menu
-set cc=100 " Show at 80 column a border for good code style
+set cc=80 " Show at 80 column a border for good code style
 # set relativenumber
 set autoindent
 set tabstop=4
@@ -30,7 +30,7 @@ nmap <F8> :TagbarToggle<CR>
 
 :set completeopt-=preview " For No Previews
 
-:colorscheme jellybeans
+# :colorscheme jellybeans
 
 let g:NERDTreeDirArrowExpandable="+"
 let g:NERDTreeDirArrowCollapsible="~"
