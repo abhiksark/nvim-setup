@@ -1,5 +1,6 @@
 # nvim-setup
 
+```
 Installation 
 
 brew install neovim
@@ -35,3 +36,5 @@ git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-m
 ( cd $ZSH_CUSTOM/plugins && git clone https://github.com/chrissicool/zsh-256color )
 
  git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+ 
+ ```
