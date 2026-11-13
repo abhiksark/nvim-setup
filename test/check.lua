@@ -330,6 +330,14 @@ case('keys_exist', function()
   end
 end)
 
+case('open_files_list', function()
+  edit(sample('bufs/a.py', 'x = 1\n'))
+  edit(sample('bufs/b.py', 'y = 2\n'))
+  press('<leader>b')
+  assert(vim.wait(5000, function() return #Snacks.picker.get({ source = 'buffers' }) > 0 end, 50),
+    'Space b did not open the list of open files')
+end)
+
 local function tree_windows()
   return vim.tbl_filter(function(win)
     return vim.bo[vim.api.nvim_win_get_buf(win)].filetype:match('^snacks_') ~= nil

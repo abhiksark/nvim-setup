@@ -107,6 +107,7 @@ next.
 |---|---|
 | Ctrl+P, Space f f | Find a file by name |
 | Space f r | Recent files |
+| Space b | Open files |
 | Space / | Search text in the project |
 | Ctrl+B, Space e | Show or hide the file tree |
 | Space x x | Error list |
@@ -138,6 +139,19 @@ Neovim's built-in language keys also work:
 | `[h`, `]h` | Previous and next git change |
 
 Ctrl+B replaces Vim's page-up; Ctrl+U still scrolls up.
+
+### Switching files, splits and tabs
+
+There is no tab bar. Opened files stay open in the background.
+
+| Key | Action |
+|---|---|
+| Space b | List the open files and pick one |
+| `]b`, `[b` | Next and previous open file |
+| Ctrl+^ | The file you were in just before |
+| Ctrl+W then `h`, `j`, `k`, `l` | Move to the split on the left, below, above or right |
+| Ctrl+W then `w` | Move to the next split, for example from the file tree to the code |
+| `gt`, `gT` | Next and previous tab (the finder's Ctrl+T opens a file in a new tab) |
 
 ### In the file tree
 

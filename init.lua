@@ -225,6 +225,7 @@ end
 vim.keymap.set('n', '<C-p>', function() Snacks.picker.files() end, { desc = 'Find file' })
 vim.keymap.set('n', '<leader>ff', function() Snacks.picker.files() end, { desc = 'Find file' })
 vim.keymap.set('n', '<leader>fr', function() Snacks.picker.recent() end, { desc = 'Recent files' })
+vim.keymap.set('n', '<leader>b', function() Snacks.picker.buffers() end, { desc = 'Open files' })
 vim.keymap.set('n', '<leader>/', function() Snacks.picker.grep() end, { desc = 'Search in project' })
 vim.keymap.set('n', '<C-b>', toggle_tree, { desc = 'Toggle file tree' })
 vim.keymap.set('n', '<leader>e', toggle_tree, { desc = 'Toggle file tree' })
