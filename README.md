@@ -12,8 +12,8 @@ open when needed and close with one key.
 ## Install
 
 The config needs Neovim 0.12 or later. Plugins are pinned in `nvim-pack-lock.json` and
-install on first launch. Language servers and debug adapters install from inside Neovim
-with `:InstallTools`.
+install on first launch. `install.sh` installs the language servers and debug adapters for
+the languages you pick (see [Picking languages](#picking-languages)).
 
 ### Linux (Debian or Ubuntu)
 
@@ -23,7 +23,6 @@ sudo apt install git curl unzip ripgrep fd-find graphviz build-essential
 mkdir -p ~/.local/bin && ln -s "$(command -v fdfind)" ~/.local/bin/fd   # Debian names fd "fdfind"
 
 curl --proto '=https' -sSf https://sh.rustup.rs | sh
-rustup component add rust-analyzer
 # Go: https://go.dev/dl
 # Node 22.18 or later, for example with nvm: nvm install 22
 
@@ -31,8 +30,7 @@ python3 -m pip install debugpy
 python3 -m pip install --target ~/.local/share/nvim/memory-graph memory_graph graphviz
 
 git clone https://github.com/abhiksark/nvim-setup ~/.config/nvim
-nvim                # first launch installs the plugins
-:InstallTools       # inside Neovim: language servers and debug adapters
+~/.config/nvim/install.sh    # pick languages; installs plugins, servers and debuggers
 ```
 
 On Ubuntu 24.04 and later, pip refuses to install into the system Python
@@ -46,20 +44,43 @@ xcode-select --install                              # C and C++ compilers
 brew install neovim git ripgrep fd graphviz go node python
 
 curl --proto '=https' -sSf https://sh.rustup.rs | sh
-rustup component add rust-analyzer
 
 python3 -m pip install debugpy
 python3 -m pip install --target ~/.local/share/nvim/memory-graph memory_graph graphviz
 
 git clone https://github.com/abhiksark/nvim-setup ~/.config/nvim
-nvim                # first launch installs the plugins
-:InstallTools       # inside Neovim: language servers and debug adapters
+~/.config/nvim/install.sh    # pick languages; installs plugins, servers and debuggers
 ```
 
 Homebrew's Python refuses `pip install` into itself in the same way. For the `debugpy`
 line, add `--user --break-system-packages`.
 
-`:InstallTools` reports each tool as it installs, or says that all tools are installed.
+### Picking languages
+
+`install.sh` sets up only the languages you pick, for example Python alone on a server. It
+never uses sudo, and it does not install the languages themselves, so the lines above are
+needed only for the languages you use.
+
+```sh
+./install.sh               # checklist: arrows move, Space ticks, a ticks all, Enter installs
+./install.sh python go     # no checklist; "all" picks every language
+```
+
+| Pick | Needs on the machine | Installs |
+|---|---|---|
+| `python` | `python3` with its `venv` module | basedpyright, ruff |
+| `go` | `go` | gopls, delve |
+| `c` | a C compiler, `unzip`, `curl` or `wget` | clangd, codelldb |
+| `js` | `node`, `npm` | vtsls |
+| `rust` | `rustup`, `unzip`, `curl` or `wget` | rust-analyzer (through rustup), codelldb |
+
+A pick whose prerequisites are missing is skipped, with a line saying what is missing. The
+script reports each tool it installs, then notes optional extras that are missing
+(debugpy, the memory picture, ripgrep). It exits with status 1 if anything was skipped or
+failed, so other setup scripts can call it.
+
+Inside Neovim, `:InstallTools python go` installs the same tools, and `:InstallTools` alone
+installs them for every language.
 
 ### Terminal
 
@@ -184,7 +205,9 @@ The memory picture needs kitty, graphviz and the `memory-graph` install line abo
 
 1. In `init.lua`, add a `vim.lsp.config('<name>', { cmd, filetypes, root_markers })` block
    and add the name to `vim.lsp.enable`.
-2. Add the server's Mason package name to `tools`, then run `:InstallTools`.
+2. Add the language and its Mason package names to `tools` in `init.lua`. Add the same
+   language name to `names` and `labels` in `install.sh`, and its prerequisites to
+   `missing_for`. Then run `./install.sh <language>`.
 3. To run files with F5, add a line for the filetype to `runner_for`.
 4. To format on save, add the server name to `format_on_save`.
 

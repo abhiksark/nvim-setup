@@ -568,8 +568,94 @@ end))
 case('install_tools_reports', function()
   vim.cmd('InstallTools')
   assert(vim.wait(60000, function()
-    return vim.tbl_contains(noticed, 'InstallTools: all tools are installed')
+    return table.concat(noticed, '\n'):find('InstallTools: all tools are installed', 1, true) ~= nil
   end, 200), 'said: ' .. table.concat(noticed, '; '))
+end)
+
+-- :InstallTools and install.sh install the tools for the languages you pick. These cases
+-- expect the Python and Go tools to be installed already, so nothing is downloaded.
+local install_sh = vim.fn.stdpath('config') .. '/install.sh'
+
+case('install_tools_unknown', function()
+  vim.cmd('InstallTools nosuch')
+  local said = table.concat(notices(), '\n')
+  assert(said:find('nosuch', 1, true) and said:find('python', 1, true), said)
+end)
+
+case('install_tools_one_language', function()
+  vim.cmd('InstallTools python')
+  local said = ''
+  vim.wait(30000, function()
+    said = said .. table.concat(notices(), '\n')
+    return said:find('all tools are installed', 1, true) ~= nil
+  end, 100)
+  assert(said:find('basedpyright', 1, true) and said:find('ruff', 1, true), said)
+  assert(not said:find('gopls', 1, true), 'checked other languages: ' .. said)
+end)
+
+-- The ! (script) form exits Neovim, so it must do nothing of the kind with a UI attached:
+-- typed by hand it would throw away unsaved edits.
+case('install_tools_bang_keeps_ui_open', function()
+  local chan = vim.fn.jobstart({ 'nvim', '--embed' }, { rpc = true })
+  vim.rpcrequest(chan, 'nvim_ui_attach', 80, 24, {})
+  pcall(vim.rpcrequest, chan, 'nvim_command', 'InstallTools! python')
+  local running = vim.fn.jobwait({ chan }, 3000)[1] == -1
+  vim.fn.jobstop(chan)
+  assert(running, 'Neovim exited')
+end)
+
+-- Run install.sh with `args`; return its exit code and combined output.
+local function run_install(args, opts)
+  local r = vim.system(vim.list_extend({ install_sh }, args), opts or {}):wait(120000)
+  return r.code, (r.stdout or '') .. (r.stderr or '')
+end
+
+case('install_sh_bad_name', function()
+  local code, out = run_install({ 'nosuch' })
+  assert(code == 2, 'exit ' .. code .. ': ' .. out)
+  assert(out:find('python', 1, true) and out:find('rust', 1, true), out)
+end)
+
+case('install_sh_needs_terminal', function()
+  local code, out = run_install({})
+  assert(code == 2, 'exit ' .. code .. ': ' .. out)
+  assert(out:find('Usage', 1, true), out)
+end)
+
+case('install_sh_python', function()
+  local code, out = run_install({ 'python' })
+  assert(code == 0, 'exit ' .. code .. ': ' .. out)
+  assert(out:find('all tools are installed (basedpyright, ruff)', 1, true), out)
+end)
+
+case('install_sh_missing_prereq', function()
+  -- A PATH with bash and nvim only: Go is missing, so the Go pick is skipped.
+  local bin = root .. '/nogo-bin'
+  vim.fn.mkdir(bin, 'p')
+  for _, tool in ipairs({ 'bash', 'nvim' }) do vim.uv.fs_symlink(vim.fn.exepath(tool), bin .. '/' .. tool) end
+  local code, out = run_install({ 'go' }, { env = { PATH = bin } })
+  assert(code == 1, 'exit ' .. code .. ': ' .. out)
+  assert(out:find('go not found', 1, true), out)
+  assert(not out:find('InstallTools', 1, true), 'tried to install anyway: ' .. out)
+end)
+
+-- Drive the checklist in a real terminal (script(1)) by typing `keys`.
+local function menu(keys)
+  local r = vim.system({ 'script', '-qec', vim.fn.shellescape(install_sh), '/dev/null' },
+    { stdin = keys }):wait(120000)
+  return r.code, r.stdout or ''
+end
+
+case('install_sh_menu', function()
+  local code, out = menu('\027[B \n') -- down to Go, tick it, Enter
+  assert(code == 0, 'exit ' .. code .. ': ' .. out)
+  assert(out:find('all tools are installed (gopls, delve)', 1, true), out)
+end)
+
+case('install_sh_menu_quit', function()
+  local code, out = menu('q')
+  assert(code == 0, 'exit ' .. code .. ': ' .. out)
+  assert(not out:find('InstallTools', 1, true), 'installed something: ' .. out)
 end)
 
 -- Errors raised in callbacks outside a case's pcall land in :messages.

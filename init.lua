@@ -40,26 +40,70 @@ end, { expr = true, replace_keycodes = false, desc = 'Pair quotes, allow """' })
 
 -- Mason installs servers and debug adapters per machine and puts its bin first on PATH.
 require('mason').setup()
+-- The Mason packages each language needs. install.sh offers the same language names.
 -- rust-analyzer is not here: rustup's component matches the installed toolchain.
-local tools = { 'clangd', 'gopls', 'vtsls', 'codelldb', 'delve', 'basedpyright', 'ruff' }
-vim.api.nvim_create_user_command('InstallTools', function()
+local tools = {
+  c = { 'clangd', 'codelldb' },
+  go = { 'gopls', 'delve' },
+  js = { 'vtsls' },
+  python = { 'basedpyright', 'ruff' },
+  rust = { 'codelldb' },
+}
+local languages = vim.tbl_keys(tools)
+table.sort(languages)
+
+-- :InstallTools [language ...] installs what those languages (default: all) still lack.
+-- With ! and no UI (install.sh): print to stdout, wait for the installs, and exit 1 on a
+-- failure. With a UI, ! is ignored, since exiting would throw away unsaved edits.
+vim.api.nvim_create_user_command('InstallTools', function(opts)
+  local script = opts.bang and #vim.api.nvim_list_uis() == 0
+  local failed, pending = 0, 1 -- pending: the registry refresh, then each install
+  local function say(msg, is_error)
+    if is_error then failed = failed + 1 end
+    if script then io.write(msg, '\n') else vim.notify(msg, is_error and vim.log.levels.ERROR or nil) end
+  end
+  local wanted = {}
+  for _, lang in ipairs(#opts.fargs > 0 and opts.fargs or languages) do
+    if not tools[lang] then
+      say(('InstallTools: unknown language %s; pick from %s'):format(lang, table.concat(languages, ', ')), true)
+      if script then vim.cmd('cquit 2') end
+      return
+    end
+    for _, name in ipairs(tools[lang]) do
+      if not vim.tbl_contains(wanted, name) then table.insert(wanted, name) end
+    end
+  end
   local registry = require('mason-registry')
   registry.refresh(vim.schedule_wrap(function(ok)
-    if not ok then return vim.notify('InstallTools: could not reach the Mason registry', vim.log.levels.ERROR) end
+    pending = 0
+    if not ok then return say('InstallTools: could not reach the Mason registry', true) end
     local missing = vim.tbl_filter(function(name)
       local pkg = registry.get_package(name)
       return not pkg:is_installed() and not pkg:is_installing()
-    end, tools)
-    if #missing == 0 then return vim.notify('InstallTools: all tools are installed') end
+    end, wanted)
+    if #missing == 0 then
+      return say(('InstallTools: all tools are installed (%s)'):format(table.concat(wanted, ', ')))
+    end
+    pending = #missing
     for _, name in ipairs(missing) do
-      vim.notify('Installing ' .. name)
+      say('Installing ' .. name)
       registry.get_package(name):install({}, vim.schedule_wrap(function(success)
-        if success then return vim.notify('Installed ' .. name) end
-        vim.notify('Failed to install ' .. name .. '; :Mason shows why', vim.log.levels.ERROR)
+        pending = pending - 1
+        if success then return say('Installed ' .. name) end
+        say('Failed to install ' .. name .. '; :Mason shows why', true)
       end))
     end
   end))
-end, { desc = 'Install missing language servers and debug adapters' })
+  if script then
+    if not vim.wait(600000, function() return pending == 0 end, 200) then say('InstallTools: timed out', true) end
+    vim.cmd(failed > 0 and 'cquit 1' or 'qall!')
+  end
+end, {
+  bang = true,
+  nargs = '*',
+  complete = function() return languages end,
+  desc = 'Install language servers and debug adapters for some or all languages',
+})
 
 -- Language servers. Each block: how to start it, which files, how to find the project root.
 vim.lsp.config('basedpyright', {
