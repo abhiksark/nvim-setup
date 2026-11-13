@@ -137,6 +137,51 @@ Neovim's built-in language keys also work:
 
 Ctrl+B replaces Vim's page-up; Ctrl+U still scrolls up.
 
+### In the file tree
+
+| Key | Action |
+|---|---|
+| Enter, `l` | Open a file, or expand a folder |
+| `h` | Collapse a folder |
+| Backspace | Go up one folder |
+| `a` | Add a file in the folder under the cursor. End the name with `/` for a folder. |
+| `d` | Delete |
+| `r` | Rename |
+| `c` | Copy |
+| `m` | Move |
+| `y`, `p` | Copy to the clipboard, then paste |
+| `o` | Open with the system's default app |
+| `u` | Refresh the tree |
+| `H`, `I` | Show or hide hidden and git-ignored files |
+| `Z` | Collapse every folder |
+| `]g`, `[g` | Next and previous file with git changes |
+| `]e`, `[e` | Next and previous file with errors |
+| Ctrl+B, `q` | Close the tree |
+| `?` | Show every key |
+
+### In the finder, project search and error list
+
+| Key | Action |
+|---|---|
+| Ctrl+J, Ctrl+K | Move down and up |
+| Enter | Open the item |
+| Ctrl+V, Ctrl+S | Open in a side-by-side or stacked split |
+| Ctrl+T | Open in a new tab |
+| Tab | Mark several items |
+| Ctrl+Q | Send the items to the quickfix list |
+| Alt+H, Alt+I | Show or hide hidden and git-ignored files |
+| Esc | Close (press it twice while typing) |
+| `?` | Show every key |
+
+### In the debugger panels
+
+| Key | Action |
+|---|---|
+| Enter | Expand or collapse a variable or watch |
+| `e` | Edit a variable's value or a watch expression |
+| `i` | In the watches panel, type an expression and press Enter to watch it |
+| `d` | Remove a watch |
+
 ## Plugins
 
 Plugins load with Neovim's built-in `vim.pack`, with no other plugin manager.
