@@ -153,6 +153,14 @@ There is no tab bar. Opened files stay open in the background.
 | Ctrl+W then `w` | Move to the next split, for example from the file tree to the code |
 | `gt`, `gT` | Next and previous tab (the finder's Ctrl+T opens a file in a new tab) |
 
+### Mouse
+
+| Mouse | Action |
+|---|---|
+| Ctrl+click | Go to the definition |
+| Ctrl+right-click | Jump back |
+| Right-click, then Go to definition | Go to the definition from the menu |
+
 ### In the file tree
 
 | Key | Action |
