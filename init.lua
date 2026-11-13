@@ -1,7 +1,7 @@
 -- init.lua
 -- Global Neovim config: VS Code's everyday features in any project, without the weight.
 -- The Python practice tools (Viz panel, :Test, debugger memory picture) are in
--- lua/practice.lua. Design: docs/superpowers/specs/2026-11-13-nvim-ide-design.md.
+-- lua/practice.lua.
 
 vim.g.mapleader = ' '
 
