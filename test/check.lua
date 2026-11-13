@@ -126,6 +126,62 @@ case('rerun_from_output', function()
   assert(#said == 0, table.concat(said, '; '))
 end)
 
+-- A machine without a server (a fresh Mac before :InstallTools) opens files quietly.
+case('missing_server_quiet', function()
+  local mason_bin = vim.fn.stdpath('data') .. '/mason/bin'
+  local path = vim.env.PATH
+  vim.env.PATH = table.concat(vim.tbl_filter(function(dir) return dir ~= mason_bin end,
+    vim.split(path, ':', { plain = true })), ':')
+  local ok, err = pcall(function()
+    edit(sample('quiet/a.go', 'package main\n'))
+    vim.wait(1000)
+    local said = notices()
+    assert(#said == 0, table.concat(said, '; '))
+  end)
+  vim.env.PATH = path
+  assert(ok, err)
+end)
+
+local servers = {
+  { 'rust', 'rs/main.rs', 'fn main() {}\n', 'rust_analyzer' },
+  { 'c', 'c/a.c', 'int main(void) { return 0; }\n', 'clangd' },
+  { 'cpp', 'cpp/a.cpp', 'int main() { return 0; }\n', 'clangd' },
+  { 'go', 'go/main.go', 'package main\n\nfunc main() {}\n', 'gopls' },
+  { 'js', 'js/a.js', 'console.log(1);\n', 'vtsls' },
+  { 'ts', 'ts/a.ts', 'const n: number = 1;\n', 'vtsls' },
+  { 'tsx', 'tsx/a.tsx', 'export const A = () => <div />;\n', 'vtsls' },
+}
+sample('go/go.mod', 'module example.com/check\n\ngo 1.21\n')
+for _, s in ipairs(servers) do
+  case('lsp_' .. s[1], function()
+    assert(attached(sample(s[2], s[3]), s[4], 30000), s[4] .. ' did not attach')
+  end)
+end
+
+-- Write `lines` to a buffer of `path` once `client` is attached; return the saved text.
+local function saved(path, client, lines)
+  assert(attached(path, client, 30000), client .. ' did not attach')
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+  vim.cmd('silent write')
+  return table.concat(vim.fn.readfile(path), '\n') .. '\n'
+end
+
+case('format_go', function()
+  local text = 'package main\nfunc  main(){}\n'
+  local want = vim.system({ 'gofmt' }, { stdin = text }):wait().stdout
+  local got = saved(sample('go/fmt.go', ''), 'gopls', vim.split(text, '\n', { trimempty = true }))
+  assert(got == want, vim.inspect(got))
+end)
+
+case('no_format_c', function()
+  local got = saved(sample('c/fmt.c', ''), 'clangd', { 'int main(){return 0;}' })
+  assert(got == 'int main(){return 0;}\n', vim.inspect(got))
+end)
+
+case('format_key', function()
+  assert(vim.fn.maparg('<leader>cf', 'n') ~= '', 'Space c f unmapped')
+end)
+
 -- Errors raised in callbacks outside a case's pcall land in :messages.
 case('messages_clean', function()
   local messages = vim.fn.execute('messages')
