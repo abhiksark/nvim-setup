@@ -5,6 +5,7 @@
 
 local root = vim.fn.tempname()
 vim.fn.mkdir(root, 'p')
+vim.cmd.cd(root) -- pickers and the tree read the working folder
 local failed = 0
 
 local noticed = {}
@@ -253,6 +254,71 @@ case('no_binary_beside_source', function()
   assert(run_output(path, 60000):find('alone', 1, true), 'run failed')
   local names = vim.fn.readdir(vim.fs.dirname(path))
   assert(#names == 1 and names[1] == 'a.c', vim.inspect(names))
+end)
+
+-- Tree, finder, search, error list, git marks, status line.
+case('keys_exist', function()
+  for _, key in ipairs({ '<C-p>', '<leader>ff', '<leader>fr', '<leader>/', '<C-b>', '<leader>e', '<leader>xx' }) do
+    assert(vim.fn.maparg(key, 'n', false, true).callback, key .. ' has no Lua callback')
+  end
+end)
+
+local function tree_windows()
+  return vim.tbl_filter(function(win)
+    return vim.bo[vim.api.nvim_win_get_buf(win)].filetype:match('^snacks_') ~= nil
+  end, vim.api.nvim_list_wins())
+end
+
+local function open_tree()
+  press('<C-b>')
+  assert(vim.wait(5000, function() return #tree_windows() > 0 end, 50), 'tree did not open')
+end
+
+case('tree_toggle', function()
+  edit(sample('tree/a.py', 'x = 1\n'))
+  open_tree()
+  press('<C-b>')
+  assert(vim.wait(5000, function() return #tree_windows() == 0 end, 50), 'tree did not close')
+end)
+
+case('tree_is_panel', function()
+  edit(sample('tree/a.py', 'x = 1\n'))
+  open_tree()
+  for _, win in ipairs(tree_windows()) do
+    assert(require('practice').is_panel(win), 'tree window is not a panel')
+  end
+end)
+
+case('tree_stays_open', function()
+  edit(sample('tree/a.py', 'x = 1\n'))
+  local code = vim.api.nvim_get_current_win()
+  open_tree()
+  vim.api.nvim_set_current_win(code)
+  edit(sample('tree/b.py', 'y = 2\n'))
+  vim.wait(300)
+  assert(#tree_windows() > 0, 'tree closed')
+end)
+
+case('statusline_set', function()
+  assert(vim.o.statusline:find('MiniStatusline', 1, true), vim.o.statusline)
+end)
+
+case('diff_signs', function()
+  local path = sample('repo/a.txt', 'one\ntwo\n')
+  local git = { 'git', '-C', vim.fs.dirname(path), '-c', 'user.name=t', '-c', 'user.email=t@t' }
+  for _, args in ipairs({ { 'init', '-q' }, { 'add', 'a.txt' }, { 'commit', '-qm', 'init' } }) do
+    assert(vim.system(vim.list_extend(vim.deepcopy(git), args)):wait().code == 0, 'git ' .. args[1])
+  end
+  edit(path)
+  vim.api.nvim_buf_set_lines(0, 1, 2, false, { 'changed' })
+  local hunks = function() return #((MiniDiff.get_buf_data(0) or {}).hunks or {}) end
+  assert(vim.wait(3000, function() return hunks() == 1 end, 50), 'hunks: ' .. hunks())
+end)
+
+case('quiet_start', function()
+  local out = vim.system({ 'nvim', '--headless', '-c',
+    'lua io.write(#vim.api.nvim_list_wins(), "|", vim.fn.execute("messages"))', '+qa' }):wait().stdout
+  assert(out == '1|', vim.inspect(out))
 end)
 
 -- Errors raised in callbacks outside a case's pcall land in :messages.

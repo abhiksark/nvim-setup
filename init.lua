@@ -124,6 +124,67 @@ vim.api.nvim_create_autocmd('LspAttach', {
 vim.keymap.set('n', 'gd', vim.lsp.buf.definition, { desc = 'Go to definition' })
 vim.keymap.set('n', '<leader>cf', function() vim.lsp.buf.format() end, { desc = 'Format file' })
 
+-- File tree and pickers: only these two snacks modules are on. Inside the tree, snacks
+-- maps Ctrl+B to scrolling; map it to close so Ctrl+B toggles from anywhere.
+require('snacks').setup({
+  explorer = { enabled = true },
+  picker = {
+    enabled = true,
+    sources = {
+      explorer = {
+        win = {
+          list = { keys = { ['<c-b>'] = 'close' } },
+          input = { keys = { ['<c-b>'] = { 'close', mode = { 'n', 'i' } } } },
+        },
+      },
+    },
+  },
+})
+
+-- Ctrl+B and Space e show or hide the tree as a left column.
+local function toggle_tree()
+  local tree = Snacks.picker.get({ source = 'explorer' })[1]
+  if tree then tree:close() else Snacks.explorer() end
+end
+
+vim.keymap.set('n', '<C-p>', function() Snacks.picker.files() end, { desc = 'Find file' })
+vim.keymap.set('n', '<leader>ff', function() Snacks.picker.files() end, { desc = 'Find file' })
+vim.keymap.set('n', '<leader>fr', function() Snacks.picker.recent() end, { desc = 'Recent files' })
+vim.keymap.set('n', '<leader>/', function() Snacks.picker.grep() end, { desc = 'Search in project' })
+vim.keymap.set('n', '<C-b>', toggle_tree, { desc = 'Toggle file tree' })
+vim.keymap.set('n', '<leader>e', toggle_tree, { desc = 'Toggle file tree' })
+vim.keymap.set('n', '<leader>xx', function()
+  Snacks.picker.diagnostics({ layout = { preset = 'ivy_split' } })
+end, { desc = 'Error list' })
+
+-- Icons need a Nerd Font; kitty has its symbols built in. Elsewhere, plain ASCII unless
+-- vim.g.nerd_font = true is set before this file runs.
+if vim.g.nerd_font == nil then vim.g.nerd_font = vim.env.KITTY_WINDOW_ID ~= nil end
+require('mini.icons').setup({ style = vim.g.nerd_font and 'glyph' or 'ascii' })
+-- Git changes as bars in the sign column (the default colors line numbers instead).
+require('mini.diff').setup({ view = { style = 'sign', signs = { add = '▎', change = '▎', delete = '▁' } } })
+require('mini.git').setup() -- branch name for the status line
+require('mini.statusline').setup()
+
+-- Hints for what can follow Space, g, [ and ].
+local clue = require('mini.clue')
+clue.setup({
+  triggers = {
+    { mode = 'n', keys = '<Leader>' },
+    { mode = 'x', keys = '<Leader>' },
+    { mode = 'n', keys = 'g' },
+    { mode = 'x', keys = 'g' },
+    { mode = 'n', keys = '[' },
+    { mode = 'n', keys = ']' },
+  },
+  clues = {
+    { mode = 'n', keys = '<Leader>f', desc = '+find' },
+    { mode = 'n', keys = '<Leader>c', desc = '+code' },
+    { mode = 'n', keys = '<Leader>x', desc = '+errors' },
+    clue.gen_clues.g(),
+  },
+})
+
 local practice = require('practice')
 local dap = require('dap')
 
