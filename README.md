@@ -120,7 +120,7 @@ next.
 | F4 | Stop debugging and close the panels |
 | F7, F8 | Earlier and later steps of the memory picture (Python) |
 | `gd` | Go to definition |
-| Tab | Accept the completion suggestion, or the first one if none is picked |
+| Tab | Accept the completion suggestion. The rest of the first one shows in gray as you type. |
 | `q` | Close the run output or a panel |
 
 Neovim's built-in language keys also work:

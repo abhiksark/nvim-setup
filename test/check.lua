@@ -234,9 +234,32 @@ case('tab_accepts_first_suggestion', function()
   assert(line == 'alpha', vim.inspect(line))
 end)
 
+-- The first suggestion is preselected, so one Ctrl+N moves to the second.
 case('tab_accepts_picked_suggestion', function()
-  local line = typed('i' .. show_menu .. '<C-n><C-n><Tab><Esc>')
+  local line = typed('i' .. show_menu .. '<C-n><Tab><Esc>')
   assert(line == 'beta', vim.inspect(line))
+end)
+
+-- Ghost text: the rest of the first suggestion shows after the cursor, in gray, and
+-- goes away on Esc, Enter or any other typing.
+local ghost_menu = "<Cmd>lua vim.fn.complete(1, { 'alpha', 'beta' })<CR>"
+local probe = "<Cmd>lua _G.ghost = { vim.fn.preinserted(), vim.api.nvim_get_current_line() }<CR>"
+case('ghost_text_shows_first_suggestion', function()
+  _G.ghost = nil
+  local line = typed('ial' .. ghost_menu .. probe .. '<Esc>')
+  assert(vim.deep_equal(_G.ghost, { 1, 'alpha' }), 'while typing: ' .. vim.inspect(_G.ghost))
+  assert(line == 'al', 'after Esc: ' .. vim.inspect(line))
+end)
+
+case('ghost_text_dropped_on_enter', function()
+  typed('ial' .. ghost_menu .. '<CR>x<Esc>')
+  local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  assert(vim.deep_equal(lines, { 'al', 'x' }), vim.inspect(lines))
+end)
+
+case('ghost_text_is_gray', function()
+  local hl = vim.api.nvim_get_hl(0, { name = 'PreInsert' })
+  assert(hl.link == 'Comment', vim.inspect(hl))
 end)
 
 -- With no menu, Tab still jumps to the next snippet field (:Test needs it) or inserts a tab.

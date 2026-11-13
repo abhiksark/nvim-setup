@@ -12,7 +12,9 @@ vim.o.clipboard = 'unnamedplus'
 vim.o.ignorecase = true
 vim.o.smartcase = true
 vim.o.undofile = true
-vim.o.completeopt = 'menuone,noselect,popup'
+-- preinsert shows the rest of the first suggestion as gray ghost text; Tab accepts it.
+vim.o.completeopt = 'menuone,popup,preinsert'
+vim.api.nvim_set_hl(0, 'PreInsert', { link = 'Comment' })
 -- ponytail: indent widths come from each language's bundled ftplugin.
 
 vim.diagnostic.config({ virtual_text = true, severity_sort = true })
