@@ -20,7 +20,7 @@ with `:InstallTools`.
 ```sh
 # Neovim 0.12+: download a release from https://github.com/neovim/neovim/releases
 sudo apt install git curl unzip ripgrep fd-find graphviz build-essential
-ln -s "$(command -v fdfind)" ~/.local/bin/fd      # Debian names fd "fdfind"
+mkdir -p ~/.local/bin && ln -s "$(command -v fdfind)" ~/.local/bin/fd   # Debian names fd "fdfind"
 
 curl --proto '=https' -sSf https://sh.rustup.rs | sh
 rustup component add rust-analyzer
@@ -34,6 +34,10 @@ git clone https://github.com/abhiksark/nvim-setup ~/.config/nvim
 nvim                # first launch installs the plugins
 :InstallTools       # inside Neovim: language servers and debug adapters
 ```
+
+On Ubuntu 24.04 and later, pip refuses to install into the system Python
+("externally-managed-environment"). For the `debugpy` line, add
+`--user --break-system-packages`. The `--target` line is not affected.
 
 ### Mac
 
@@ -51,6 +55,11 @@ git clone https://github.com/abhiksark/nvim-setup ~/.config/nvim
 nvim                # first launch installs the plugins
 :InstallTools       # inside Neovim: language servers and debug adapters
 ```
+
+Homebrew's Python refuses `pip install` into itself in the same way. For the `debugpy`
+line, add `--user --break-system-packages`.
+
+`:InstallTools` reports each tool as it installs, or says that all tools are installed.
 
 ### Terminal
 
@@ -138,6 +147,9 @@ completion, and highlighting uses Vim's syntax files plus the language servers.
 Notes:
 
 - Compiled binaries go to `~/.cache/nvim-run/`, never next to the source file.
+- In a Cargo package with several binaries, F5 and F6 use the binary whose main file is
+  open (for example `src/bin/two.rs`), and otherwise the package's first binary.
+- The error list shows errors from every folder, not only the one Neovim started in.
 - C, C++, JavaScript and TypeScript have no single standard style, so they are not
   formatted on save. Space c f formats them on demand.
 - F5 compiles one C or C++ file. Projects with several source files are not built.

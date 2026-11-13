@@ -44,15 +44,21 @@ require('mason').setup()
 local tools = { 'clangd', 'gopls', 'vtsls', 'codelldb', 'delve', 'basedpyright', 'ruff' }
 vim.api.nvim_create_user_command('InstallTools', function()
   local registry = require('mason-registry')
-  registry.refresh(function()
-    for _, name in ipairs(tools) do
+  registry.refresh(vim.schedule_wrap(function(ok)
+    if not ok then return vim.notify('InstallTools: could not reach the Mason registry', vim.log.levels.ERROR) end
+    local missing = vim.tbl_filter(function(name)
       local pkg = registry.get_package(name)
-      if not pkg:is_installed() then
-        vim.notify('Installing ' .. name)
-        pkg:install()
-      end
+      return not pkg:is_installed() and not pkg:is_installing()
+    end, tools)
+    if #missing == 0 then return vim.notify('InstallTools: all tools are installed') end
+    for _, name in ipairs(missing) do
+      vim.notify('Installing ' .. name)
+      registry.get_package(name):install({}, vim.schedule_wrap(function(success)
+        if success then return vim.notify('Installed ' .. name) end
+        vim.notify('Failed to install ' .. name .. '; :Mason shows why', vim.log.levels.ERROR)
+      end))
     end
-  end)
+  end))
 end, { desc = 'Install missing language servers and debug adapters' })
 
 -- Language servers. Each block: how to start it, which files, how to find the project root.
@@ -125,9 +131,12 @@ vim.api.nvim_create_autocmd('LspAttach', {
     end
 
     if format_on_save[client.name] then
+      -- By name, and one autocmd per buffer and server, so :lsp restart neither leaves a
+      -- dead client id behind nor stacks a second formatter.
       vim.api.nvim_create_autocmd('BufWritePre', {
+        group = vim.api.nvim_create_augroup(('format_on_save_%s_%d'):format(client.name, args.buf), {}),
         buffer = args.buf,
-        callback = function() vim.lsp.buf.format({ bufnr = args.buf, id = client.id }) end,
+        callback = function() vim.lsp.buf.format({ bufnr = args.buf, name = client.name }) end,
       })
     end
   end,
@@ -166,7 +175,9 @@ vim.keymap.set('n', '<leader>/', function() Snacks.picker.grep() end, { desc = '
 vim.keymap.set('n', '<C-b>', toggle_tree, { desc = 'Toggle file tree' })
 vim.keymap.set('n', '<leader>e', toggle_tree, { desc = 'Toggle file tree' })
 vim.keymap.set('n', '<leader>xx', function()
-  Snacks.picker.diagnostics({ layout = { preset = 'ivy_split' } })
+  -- Cursor in the list (not the filter box) so q closes it; errors from every folder,
+  -- not only the working one.
+  Snacks.picker.diagnostics({ layout = { preset = 'ivy_split' }, focus = 'list', filter = { cwd = false } })
 end, { desc = 'Error list' })
 
 -- Icons need a Nerd Font; kitty has its symbols built in. Elsewhere, plain ASCII unless
@@ -230,11 +241,41 @@ local function compile_argv(path, ft)
   return vim.list_extend(vim.deepcopy(compilers[ft]), { path, '-o', bin }), bin
 end
 
+-- The Cargo binary `path` belongs to: the one whose main file it is (src/bin/*.rs), else
+-- the package's first. Returns its name (nil for a library-only package) and cargo's
+-- target folder.
+local function cargo_bin(path, cargo_root)
+  local out = vim.system({ 'cargo', 'metadata', '--no-deps', '--format-version', '1' }, { cwd = cargo_root }):wait()
+  if out.code ~= 0 then return nil end
+  local meta = vim.json.decode(out.stdout)
+  local file, manifest = vim.uv.fs_realpath(path), vim.uv.fs_realpath(cargo_root .. '/Cargo.toml')
+  local first
+  for _, pkg in ipairs(meta.packages) do
+    if vim.uv.fs_realpath(pkg.manifest_path) == manifest then
+      for _, target in ipairs(pkg.targets) do
+        if vim.tbl_contains(target.kind, 'bin') then
+          if vim.uv.fs_realpath(target.src_path) == file then return target.name, meta.target_directory end
+          first = first or target.name
+        end
+      end
+    end
+  end
+  return first, meta.target_directory
+end
+
+-- What F5 runs files with, besides the compilers.
+local runtimes = { go = 'go', javascript = 'node', typescript = 'node' }
+
 -- The command and folder that run `path`, or nil and the reason it can't be run.
 local function runner_for(path, ft)
-  local dir = vim.fs.dirname(path)
-  if ft == 'rust' and vim.fs.root(path, 'Cargo.toml') then
-    return { 'cargo', 'run' }, vim.fs.root(path, 'Cargo.toml')
+  if ft == 'typescriptreact' then return nil, 'TSX needs a bundler; F5 does not run it' end
+  local dir, cargo = vim.fs.dirname(path), ft == 'rust' and vim.fs.root(path, 'Cargo.toml')
+  local tool = cargo and 'cargo' or compilers[ft] and compilers[ft][1] or runtimes[ft]
+  if not tool then return nil, 'F5: no runner for ' .. ft end
+  if vim.fn.executable(tool) ~= 1 then return nil, ('F5: %s not found on PATH'):format(tool) end
+  if cargo then
+    local bin = cargo_bin(path, cargo)
+    return vim.list_extend({ 'cargo', 'run' }, bin and { '--bin', bin } or {}), cargo
   end
   if compilers[ft] then
     local argv, bin = compile_argv(path, ft)
@@ -245,9 +286,7 @@ local function runner_for(path, ft)
     return { 'sh', '-c', script }, dir
   end
   if ft == 'go' then return { 'go', 'run', vim.fs.root(path, 'go.mod') and '.' or path }, dir end
-  if ft == 'javascript' or ft == 'typescript' then return { 'node', path }, dir end
-  if ft == 'typescriptreact' then return nil, 'TSX needs a bundler; F5 does not run it' end
-  return nil, 'F5: no runner for ' .. ft
+  return { 'node', path }, dir
 end
 
 -- A file that F5 and F6 can act on: not a panel, the tree or a scratch buffer.
@@ -304,20 +343,10 @@ local function build_for_debug(path, ft)
     run_in_panel(cmd, cwd) -- build again where the errors can be read
     return nil
   end
-  if cargo then
-    local meta = vim.json.decode(vim.system({ 'cargo', 'metadata', '--no-deps', '--format-version', '1' },
-      { cwd = cargo }):wait().stdout)
-    for _, pkg in ipairs(meta.packages) do
-      if pkg.manifest_path == cargo .. '/Cargo.toml' then
-        for _, target in ipairs(pkg.targets) do
-          if vim.tbl_contains(target.kind, 'bin') then
-            return meta.target_directory .. '/debug/' .. target.name -- the package's first binary
-          end
-        end
-      end
-    end
-  end
-  return bin
+  if not cargo then return bin end
+  local name, target_dir = cargo_bin(path, cargo)
+  if not name then return vim.notify('F6: no binary target in this Cargo package') end
+  return target_dir .. '/debug/' .. name
 end
 
 -- The launch config for a compiled-language file, or nil if it could not be built.
@@ -334,12 +363,19 @@ end
 -- F6: start debugging the current file, or continue a paused session.
 local function debug_file()
   if dap.session() then return dap.continue() end -- from any window, panels included
+  if vim.b.python_run then vim.cmd.wincmd('p') end -- pressed from the run panel, as F5
   if not in_code_file() then return vim.notify('F6: open a code file first') end
   local ft = vim.bo.filetype
   if ft == 'python' then return practice.debug_python() end
   if not (compilers[ft] or ft == 'go') then return vim.notify('F6: no debugger for ' .. ft) end
+  local path = vim.api.nvim_buf_get_name(0)
+  local cargo = ft == 'rust' and vim.fs.root(path, 'Cargo.toml')
+  local needed = ft == 'go' and { 'go', 'dlv' } or { cargo and 'cargo' or compilers[ft][1], 'codelldb' }
+  for _, tool in ipairs(needed) do
+    if vim.fn.executable(tool) ~= 1 then return vim.notify(('F6: %s not found on PATH'):format(tool)) end
+  end
   vim.cmd('stopinsert | silent write')
-  local config = debug_config(vim.api.nvim_buf_get_name(0), ft)
+  local config = debug_config(path, ft)
   if not config then return end
   if next(require('dap.breakpoints').get()) == nil then
     vim.notify('No breakpoints: running to the end. F9 sets one.')

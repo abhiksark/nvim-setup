@@ -449,6 +449,129 @@ case('debug_python_still', debugging(function()
   assert(s.current_frame.line == 3, 'stopped at line ' .. s.current_frame.line)
 end))
 
+-- Fixes from the whole-branch review.
+
+-- Format on save keeps working, without warnings, after the server restarts.
+case('format_after_restart', function()
+  local path = sample('go/restart.go', 'package main\n')
+  assert(attached(path, 'gopls', 30000), 'gopls did not attach')
+  local buf = vim.api.nvim_get_current_buf()
+  local old = vim.lsp.get_clients({ bufnr = buf, name = 'gopls' })[1].id
+  vim.cmd('lsp restart gopls')
+  assert(vim.wait(30000, function()
+    local c = vim.lsp.get_clients({ bufnr = buf, name = 'gopls' })[1]
+    return c ~= nil and c.id ~= old and c.initialized
+  end, 100), 'gopls did not come back')
+  notices()
+  local text = 'package main\nfunc  main(){}\n'
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(text, '\n', { trimempty = true }))
+  vim.cmd('silent write')
+  local want = vim.system({ 'gofmt' }, { stdin = text }):wait().stdout
+  assert(table.concat(vim.fn.readfile(path), '\n') .. '\n' == want, 'not formatted')
+  local said = table.concat(notices(), '; ')
+  assert(said == '', said)
+end)
+
+-- A missing runtime or compiler gives one message, and no panel or Lua error.
+case('missing_runtime', function()
+  local js = sample('js/norun.js', 'console.log(1);\n')
+  local c = sample('c/nocc.c', 'int main(void) { return 0; }\n')
+  local path = vim.env.PATH
+  local ok, err = pcall(function()
+    edit(js)
+    vim.env.PATH = '/nonexistent'
+    press('<F5>')
+    assert(#run_windows() == 0, 'a run panel opened')
+    assert(table.concat(notices(), '\n'):find('F5: node not found on PATH', 1, true), 'no F5 message')
+    edit(c)
+    press('<F6>')
+    assert(table.concat(notices(), '\n'):find('F6: cc not found on PATH', 1, true), 'no F6 message')
+  end)
+  vim.env.PATH = path
+  assert(ok, err)
+end)
+
+-- The error list lists errors from every folder, opens with the cursor in the list, and
+-- q closes it.
+case('error_list', function()
+  sample('elist/sub/keep.txt', '')
+  local bad = sample('elist/other/bad.py', 'x: int = "s"\n')
+  vim.cmd.cd(root .. '/elist/sub')
+  local ok, err = pcall(function()
+    assert(attached(bad, 'basedpyright', 20000), 'basedpyright did not attach')
+    assert(vim.wait(20000, function() return #vim.diagnostic.get(0) > 0 end, 100), 'no diagnostics')
+    press('<leader>xx')
+    local picker
+    assert(vim.wait(5000, function()
+      picker = Snacks.picker.get({ source = 'diagnostics' })[1]
+      return picker ~= nil and #picker:items() > 0
+    end, 50), 'error list is empty')
+    assert(vim.bo.filetype == 'snacks_picker_list' and vim.fn.mode() == 'n',
+      'focus is in ' .. vim.bo.filetype .. ' mode ' .. vim.fn.mode())
+    vim.api.nvim_feedkeys('q', 'xt', false)
+    assert(vim.wait(2000, function() return #tree_windows() == 0 end, 50), 'q did not close it')
+  end)
+  vim.cmd.cd(root)
+  assert(ok, err)
+end)
+
+-- Cargo: F5 and F6 use the binary whose main file is open; a library says so.
+local function cargo_toml(name)
+  return ('[package]\nname = "%s"\nversion = "0.1.0"\nedition = "2021"\n'):format(name)
+end
+local function multi_crate()
+  sample(spaced .. 'multi/Cargo.toml', cargo_toml('multi'))
+  sample(spaced .. 'multi/src/main.rs', 'fn main() {\n    println!("hi main");\n}\n')
+  return sample(spaced .. 'multi/src/bin/two.rs', 'fn main() {\n    let a = 1;\n    println!("hi two {}", a);\n}\n')
+end
+
+case('cargo_second_binary', function()
+  local out = run_output(multi_crate(), 120000)
+  assert(out:find('hi two', 1, true), out)
+end)
+
+case('cargo_second_binary_debug', debugging(function()
+  local two = multi_crate()
+  local s = debug_until_stop(two, { 3 }, 120000)
+  local frame = s.current_frame
+  assert(frame.line == 3 and vim.uv.fs_realpath(frame.source.path) == vim.uv.fs_realpath(two),
+    ('stopped at %s:%d'):format(frame.source.path, frame.line))
+end))
+
+case('cargo_library_only', function()
+  sample(spaced .. 'lib/Cargo.toml', cargo_toml('onlylib'))
+  edit(sample(spaced .. 'lib/src/lib.rs', 'pub fn f() -> i32 {\n    1\n}\n'))
+  vim.api.nvim_win_set_cursor(0, { 2, 0 })
+  dap.set_breakpoint()
+  press('<F6>')
+  require('dap.breakpoints').clear()
+  local said = table.concat(notices(), '\n')
+  assert(said:find('F6: no binary target in this Cargo package', 1, true), 'said: ' .. said)
+end)
+
+-- F6 right after F5, with the cursor still in the run panel, debugs the file.
+case('debug_from_run_panel', debugging(function()
+  local d = debuggees.cpp
+  local path = sample(d[1], d[2])
+  run_output(path, 60000)
+  vim.api.nvim_set_current_win(run_windows()[1])
+  vim.cmd('wincmd p')
+  vim.api.nvim_win_set_cursor(0, { d[3], 0 })
+  dap.set_breakpoint()
+  vim.api.nvim_set_current_win(run_windows()[1])
+  press('<F6>')
+  assert(vim.wait(120000, function() return dap.session() and dap.session().current_frame ~= nil end, 100),
+    'no stop; notices: ' .. table.concat(notices(), '; '))
+end))
+
+-- :InstallTools says what it did.
+case('install_tools_reports', function()
+  vim.cmd('InstallTools')
+  assert(vim.wait(60000, function()
+    return vim.tbl_contains(noticed, 'InstallTools: all tools are installed')
+  end, 200), 'said: ' .. table.concat(noticed, '; '))
+end)
+
 -- Errors raised in callbacks outside a case's pcall land in :messages.
 case('messages_clean', function()
   local messages = vim.fn.execute('messages')
