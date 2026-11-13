@@ -70,8 +70,25 @@ local function run_output(path, ms)
   return panel_text(ms)
 end
 
+-- Back to one window, and wipe file and terminal buffers. The debugger panels keep their
+-- own (nofile) buffers, which dap-ui expects to reuse.
+local function reset()
+  for _, picker in ipairs(Snacks.picker.get({ tab = false })) do picker:close() end
+  vim.wait(100) -- picker windows close on the next loop turn
+  vim.cmd('silent! only | silent! enew!')
+  local current = vim.api.nvim_get_current_buf()
+  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+    local bt = vim.bo[buf].buftype
+    if buf ~= current and (bt == '' or bt == 'terminal') then
+      pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    end
+  end
+end
+
+-- CHECK_ONLY=<Lua pattern> runs only the matching cases, for quick iteration.
 local function case(name, fn)
-  vim.cmd('silent! only | silent! %bwipeout!')
+  if vim.env.CHECK_ONLY and not name:match(vim.env.CHECK_ONLY) then return end
+  reset()
   notices()
   local ok, err = pcall(fn)
   if ok then
@@ -159,6 +176,26 @@ for _, s in ipairs(servers) do
   end)
 end
 
+-- A Rust file outside any Cargo project (LeetCode style) still gets language features,
+-- without an error popup about the missing workspace.
+case('rust_single_file', function()
+  local path = sample('rs single/a.rs', 'fn add(a: i32) -> i32 { a + 1 }\nfn main() {\n    println!("{}", add(1));\n}\n')
+  assert(attached(path, 'rust_analyzer', 30000), 'rust_analyzer did not attach')
+  local buf = vim.api.nvim_get_current_buf()
+  local params = { textDocument = { uri = vim.uri_from_bufnr(buf) }, position = { line = 2, character = 20 } }
+  local text = ''
+  for _ = 1, 15 do -- the server indexes first; ask again until it answers
+    for _, r in pairs(vim.lsp.buf_request_sync(buf, 'textDocument/hover', params, 2000) or {}) do
+      if r.result then text = r.result.contents.value or '' end
+    end
+    if text:find('fn add', 1, true) then break end
+    vim.wait(1000)
+  end
+  assert(text:find('fn add', 1, true), 'no hover: ' .. text)
+  local said = table.concat(notices(), '; ')
+  assert(not said:find('workspace', 1, true), said)
+end)
+
 -- Write `lines` to a buffer of `path` once `client` is attached; return the saved text.
 local function saved(path, client, lines)
   assert(attached(path, client, 30000), client .. ' did not attach')
@@ -223,7 +260,7 @@ end)
 case('compile_error', function()
   local path = sample(spaced .. 'err/a.c', '#include <stdio.h>\nint main(void) { puts("old-output"); }\n')
   assert(run_output(path, 60000):find('old-output', 1, true), 'first run failed')
-  vim.cmd('silent! only | silent! %bwipeout!')
+  reset()
   sample(spaced .. 'err/a.c', 'int main(void) { return 1 }\n')
   local out = run_output(path, 60000)
   assert(out:find('error', 1, true), out)
@@ -234,7 +271,7 @@ case('same_name', function()
   local x = sample('x/main.c', '#include <stdio.h>\nint main(void) { puts("from-x"); }\n')
   local y = sample('y/main.c', '#include <stdio.h>\nint main(void) { puts("from-y"); }\n')
   for _, step in ipairs({ { x, 'from-x' }, { y, 'from-y' }, { x, 'from-x' } }) do
-    vim.cmd('silent! only | silent! %bwipeout!')
+    reset()
     local out = run_output(step[1], 60000)
     assert(out:find(step[2], 1, true), out)
   end
@@ -320,6 +357,97 @@ case('quiet_start', function()
     'lua io.write(#vim.api.nvim_list_wins(), "|", vim.fn.execute("messages"))', '+qa' }):wait().stdout
   assert(out == '1|', vim.inspect(out))
 end)
+
+-- Debugger: breakpoints stop in every compiled language, from folders with spaces.
+local dap = require('dap')
+
+-- Set breakpoints on `lines` of `path`, press F6, and wait for the first stop.
+local function debug_until_stop(path, lines, ms)
+  edit(path)
+  for _, line in ipairs(lines) do
+    vim.api.nvim_win_set_cursor(0, { line, 0 })
+    dap.set_breakpoint()
+  end
+  press('<F6>')
+  -- Fail fast when F6 starts no session (a message or a build-error panel instead).
+  local refused = function()
+    return #vim.tbl_filter(function(m) return m:find('^F6') ~= nil end, noticed) > 0
+  end
+  vim.wait(ms, function() return dap.session() ~= nil or refused() or #run_windows() > 0 end, 100)
+  assert(dap.session(), 'no session; notices: ' .. table.concat(notices(), '; '))
+  assert(vim.wait(ms, function() return dap.session() and dap.session().current_frame ~= nil end, 100),
+    'no stop; notices: ' .. table.concat(notices(), '; '))
+  return dap.session()
+end
+
+local function stop_debug()
+  require('dap.breakpoints').clear()
+  if dap.session() then dap.terminate() end
+  vim.wait(5000, function() return dap.session() == nil end, 100)
+  require('dapui').close()
+end
+
+-- Run fn, then stop the debugger whether fn passed or not.
+local function debugging(fn)
+  return function()
+    local ok, err = pcall(fn)
+    stop_debug()
+    assert(ok, err)
+  end
+end
+
+local debuggees = {
+  cpp = { spaced .. 'dbg/a.cpp', '#include <cstdio>\nint main() {\n  int a = 1;\n  int b = a + 1;\n  std::printf("%d\\n", b);\n}\n', 3 },
+  rust = { spaced .. 'dbg/a.rs', 'fn main() {\n    let a = 1;\n    let b = a + 1;\n    println!("{}", b);\n}\n', 3 },
+  -- Go is saved through gofmt, so the sample is already in gofmt layout.
+  go = { spaced .. 'dbg/go/main.go', 'package main\n\nfunc main() {\n\ta := 1\n\tprintln(a + 1)\n}\n', 4 },
+}
+sample(spaced .. 'dbg/go/go.mod', 'module example.com/dbg\n\ngo 1.21\n')
+for _, lang in ipairs({ 'cpp', 'rust', 'go' }) do
+  local d = debuggees[lang]
+  case('debug_' .. lang, debugging(function()
+    local s = debug_until_stop(sample(d[1], d[2]), { d[3] }, 120000)
+    assert(s.current_frame.line == d[3], 'stopped at line ' .. s.current_frame.line)
+  end))
+end
+
+case('debug_no_memory_warning', debugging(function()
+  local d = debuggees.cpp
+  debug_until_stop(sample(d[1], d[2]), { d[3] }, 120000)
+  vim.wait(2000)
+  local said = table.concat(notices(), '; ')
+  assert(not said:find('Memory picture', 1, true), said)
+end))
+
+case('continue_from_panel', debugging(function()
+  local d = debuggees.cpp
+  local s = debug_until_stop(sample(d[1], d[2]), { 3, 4 }, 120000)
+  local panel = vim.tbl_filter(function(win)
+    return vim.bo[vim.api.nvim_win_get_buf(win)].filetype:match('^dap') ~= nil
+  end, vim.api.nvim_list_wins())[1]
+  assert(panel, 'no debugger panel open')
+  vim.api.nvim_set_current_win(panel)
+  press('<F6>')
+  assert(vim.wait(30000, function() return s.current_frame and s.current_frame.line == 4 end, 100),
+    'did not continue to line 4')
+  local said = table.concat(notices(), '; ')
+  assert(not said:find('open a code file', 1, true), said)
+end))
+
+case('debug_build_error', debugging(function()
+  edit(sample(spaced .. 'dbg/bad.c', 'int main(void) { return 1 }\n'))
+  press('<F6>')
+  vim.cmd.stopinsert()
+  local out = panel_text(60000)
+  assert(out:find('error', 1, true), out)
+  assert(dap.session() == nil, 'a debug session started')
+end))
+
+case('debug_python_still', debugging(function()
+  local path = sample('py/dbg.py', 'a = 1\nb = a + 1\nc = b + 1\nprint(c)\n')
+  local s = debug_until_stop(path, { 3 }, 120000)
+  assert(s.current_frame.line == 3, 'stopped at line ' .. s.current_frame.line)
+end))
 
 -- Errors raised in callbacks outside a case's pcall land in :messages.
 case('messages_clean', function()

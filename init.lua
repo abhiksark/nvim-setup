@@ -69,10 +69,22 @@ vim.lsp.config('ruff', {
   -- Match basedpyright (utf-16 only) so both servers agree on column positions.
   capabilities = { general = { positionEncodings = { 'utf-16' } } },
 })
+-- A .rs file outside any Cargo project (LeetCode style) gets a client for its folder,
+-- with that folder's .rs files passed as "detached files", rust-analyzer's single-file
+-- mode. Without it the server only reports "Failed to discover workspace".
+-- ponytail: a .rs file created later in that folder needs :lsp restart to be picked up.
 vim.lsp.config('rust_analyzer', {
   cmd = { 'rust-analyzer' },
   filetypes = { 'rust' },
-  root_markers = { 'Cargo.toml', '.git' },
+  root_dir = function(buf, on_dir)
+    local path = vim.api.nvim_buf_get_name(buf)
+    on_dir(vim.fs.root(path, 'Cargo.toml') or vim.fs.dirname(path))
+  end,
+  before_init = function(params, config)
+    if not vim.uv.fs_stat(config.root_dir .. '/Cargo.toml') then
+      params.initializationOptions = { detachedFiles = vim.fn.glob(config.root_dir .. '/*.rs', false, true) }
+    end
+  end,
 })
 vim.lsp.config('clangd', {
   cmd = { 'clangd' },
@@ -256,12 +268,83 @@ local function run_file()
   run_in_panel(cmd, cwd)
 end
 
+-- Debug adapters for compiled languages (Mason installs both). Python's is in practice.lua.
+dap.adapters.codelldb = { type = 'executable', command = 'codelldb' }
+-- delve runs `go build` in its own working folder, which must be inside the module.
+-- ponytail: Mason ships the newest delve, which refuses Go releases older than its support
+-- window (1.27 wants Go 1.25+); the check is skipped so an older Go still debugs. Drop the
+-- flag if a stop ever looks wrong, and update Go.
+dap.adapters.delve = function(callback, config)
+  callback({
+    type = 'server',
+    port = '${port}',
+    executable = {
+      command = 'dlv',
+      args = { 'dap', '--check-go-version=false', '-l', '127.0.0.1:${port}' },
+      cwd = config.cwd,
+    },
+  })
+end
+
+-- Build `path` with debug info for F6 and return the binary, or nil after showing the
+-- build errors in the run panel. Uses F5's flags and cache, or cargo in a Cargo project.
+-- ponytail: builds block the editor until done; fine for single files, async if cargo
+-- builds get long.
+local function build_for_debug(path, ft)
+  local cargo = ft == 'rust' and vim.fs.root(path, 'Cargo.toml')
+  local cmd, cwd, bin
+  if cargo then
+    cmd, cwd = { 'cargo', 'build' }, cargo
+  else
+    cmd, bin = compile_argv(path, ft)
+    cwd = vim.fs.dirname(path)
+    vim.fn.mkdir(run_cache, 'p')
+  end
+  if vim.system(cmd, { cwd = cwd }):wait().code ~= 0 then
+    run_in_panel(cmd, cwd) -- build again where the errors can be read
+    return nil
+  end
+  if cargo then
+    local meta = vim.json.decode(vim.system({ 'cargo', 'metadata', '--no-deps', '--format-version', '1' },
+      { cwd = cargo }):wait().stdout)
+    for _, pkg in ipairs(meta.packages) do
+      if pkg.manifest_path == cargo .. '/Cargo.toml' then
+        for _, target in ipairs(pkg.targets) do
+          if vim.tbl_contains(target.kind, 'bin') then
+            return meta.target_directory .. '/debug/' .. target.name -- the package's first binary
+          end
+        end
+      end
+    end
+  end
+  return bin
+end
+
+-- The launch config for a compiled-language file, or nil if it could not be built.
+local function debug_config(path, ft)
+  local dir = vim.fs.dirname(path)
+  if ft == 'go' then
+    return { type = 'delve', request = 'launch', name = 'Debug file', mode = 'debug',
+      program = vim.fs.root(path, 'go.mod') and dir or path, cwd = dir }
+  end
+  local bin = build_for_debug(path, ft)
+  return bin and { type = 'codelldb', request = 'launch', name = 'Debug file', program = bin, cwd = dir }
+end
+
 -- F6: start debugging the current file, or continue a paused session.
 local function debug_file()
   if dap.session() then return dap.continue() end -- from any window, panels included
+  if not in_code_file() then return vim.notify('F6: open a code file first') end
   local ft = vim.bo.filetype
   if ft == 'python' then return practice.debug_python() end
-  vim.notify('F6: no debugger for ' .. ft)
+  if not (compilers[ft] or ft == 'go') then return vim.notify('F6: no debugger for ' .. ft) end
+  vim.cmd('stopinsert | silent write')
+  local config = debug_config(vim.api.nvim_buf_get_name(0), ft)
+  if not config then return end
+  if next(require('dap.breakpoints').get()) == nil then
+    vim.notify('No breakpoints: running to the end. F9 sets one.')
+  end
+  dap.run(config)
 end
 
 vim.keymap.set('n', '<leader>r', run_file, { desc = 'Run current file' })
