@@ -132,6 +132,8 @@ Neovim's built-in language keys also work:
 | `gra` | Code actions |
 | `gri` | Implementation |
 | `gO` | Symbols in the file |
+| Ctrl+O, Ctrl+I | Jump back and forward, for example after `gd` |
+| Ctrl+], Ctrl+T | Go to definition, and back |
 | `[d`, `]d` | Previous and next error |
 | `[h`, `]h` | Previous and next git change |
 
