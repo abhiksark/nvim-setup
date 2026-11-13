@@ -15,6 +15,20 @@ vim.o.undofile = true
 -- preinsert shows the rest of the first suggestion as gray ghost text; Tab accepts it.
 vim.o.completeopt = 'menuone,popup,preinsert'
 vim.api.nvim_set_hl(0, 'PreInsert', { link = 'Comment' })
+-- While typing, suggestions match case exactly: with 'ignorecase' on, the ghost text
+-- rewrote typed letters to a suggestion's case (serv became Server). Searches outside
+-- insert mode keep 'ignorecase'. ModeChanged, not InsertLeave, which CTRL-C skips.
+local saved_ignorecase
+vim.api.nvim_create_autocmd('ModeChanged', {
+  callback = function()
+    local typing = vim.v.event.new_mode:find('^[iR]') ~= nil
+    if typing and saved_ignorecase == nil then
+      saved_ignorecase, vim.o.ignorecase = vim.o.ignorecase, false
+    elseif not typing and saved_ignorecase ~= nil then
+      vim.o.ignorecase, saved_ignorecase = saved_ignorecase, nil
+    end
+  end,
+})
 -- ponytail: indent widths come from each language's bundled ftplugin.
 
 vim.diagnostic.config({ virtual_text = true, severity_sort = true })

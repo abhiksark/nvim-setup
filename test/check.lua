@@ -251,6 +251,19 @@ case('ghost_text_shows_first_suggestion', function()
   assert(line == 'al', 'after Esc: ' .. vim.inspect(line))
 end)
 
+-- Typed letters keep their case: with 'ignorecase' on, the ghost text of a capitalized
+-- suggestion used to rewrite them (serv became Server, and stayed so after Esc).
+case('typed_case_kept', function()
+  _G.ghost = nil
+  -- Through the LSP completion's own filter, which is what reads 'ignorecase'.
+  local lsp_menu = "<Cmd>lua vim.fn.complete(1, vim.lsp.completion._lsp_to_complete_items("
+    .. "{ items = { { label = 'Server' }, { label = 'serve' } } }, 'serv'))<CR>"
+  local line = typed('iserv' .. lsp_menu .. probe .. '<Esc>')
+  assert(_G.ghost[2]:sub(1, 4) == 'serv', 'while typing: ' .. vim.inspect(_G.ghost))
+  assert(line == 'serv', 'after Esc: ' .. vim.inspect(line))
+  assert(vim.o.ignorecase, "'ignorecase' not restored after insert mode")
+end)
+
 case('ghost_text_dropped_on_enter', function()
   typed('ial' .. ghost_menu .. '<CR>x<Esc>')
   local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
