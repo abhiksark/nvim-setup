@@ -186,6 +186,16 @@ vim.api.nvim_create_autocmd('LspAttach', {
   end,
 })
 
+-- Tab accepts the completion suggestion, the first one when none is picked (as in VS Code).
+-- With no menu it does what Neovim's own Tab does: next snippet field, else a tab.
+vim.keymap.set('i', '<Tab>', function()
+  if vim.fn.pumvisible() == 1 then
+    return vim.fn.complete_info({ 'selected' }).selected == -1 and '<C-n><C-y>' or '<C-y>'
+  end
+  if vim.snippet.active({ direction = 1 }) then return '<Cmd>lua vim.snippet.jump(1)<CR>' end
+  return '<Tab>'
+end, { expr = true, desc = 'Accept completion, next snippet field, or tab' })
+
 vim.keymap.set('n', 'gd', vim.lsp.buf.definition, { desc = 'Go to definition' })
 vim.keymap.set('n', '<leader>cf', function() vim.lsp.buf.format() end, { desc = 'Format file' })
 

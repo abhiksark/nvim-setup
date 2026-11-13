@@ -220,6 +220,36 @@ case('format_key', function()
   assert(vim.fn.maparg('<leader>cf', 'n') ~= '', 'Space c f unmapped')
 end)
 
+-- Type `keys` (with <...> key names) into an empty buffer; return the line.
+local function typed(keys)
+  vim.cmd.enew()
+  vim.api.nvim_feedkeys(vim.keycode(keys), 'xt', false)
+  return vim.api.nvim_get_current_line()
+end
+local show_menu = "<Cmd>lua vim.fn.complete(1, { 'alpha', 'beta' })<CR>"
+
+-- Tab accepts a completion suggestion: the first when none is picked, as in VS Code.
+case('tab_accepts_first_suggestion', function()
+  local line = typed('i' .. show_menu .. '<Tab><Esc>')
+  assert(line == 'alpha', vim.inspect(line))
+end)
+
+case('tab_accepts_picked_suggestion', function()
+  local line = typed('i' .. show_menu .. '<C-n><C-n><Tab><Esc>')
+  assert(line == 'beta', vim.inspect(line))
+end)
+
+-- With no menu, Tab still jumps to the next snippet field (:Test needs it) or inserts a tab.
+case('tab_jumps_snippet_field', function()
+  local line = typed("i<Cmd>lua vim.snippet.expand('$1-$2')<CR>x<Tab>y<Esc>")
+  assert(line == 'x-y', vim.inspect(line))
+end)
+
+case('tab_inserts_tab', function()
+  local line = typed('i<Tab>x<Esc>')
+  assert(line == '\tx', vim.inspect(line))
+end)
+
 -- F5 in every language, from folders with spaces in their names.
 local programs = {
   { 'c', 'c/a.c', '#include <stdio.h>\nint main(void) { puts("hi c"); return 0; }\n' },
