@@ -1,40 +1,187 @@
+<!-- README.md -->
 # nvim-setup
 
+A Neovim configuration that provides the everyday features of VS Code in any project: a
+file tree, a file finder, project search, git change marks, an error list, and running
+and debugging the current file. It supports Python, Rust, C, C++, Go, JavaScript and
+TypeScript, and starts in about 25 ms.
+
+The screen shows only code by default. The file tree, finder, error list and run output
+open when needed and close with one key.
+
+## Install
+
+The config needs Neovim 0.12 or later. Plugins are pinned in `nvim-pack-lock.json` and
+install on first launch. Language servers and debug adapters install from inside Neovim
+with `:InstallTools`.
+
+### Linux (Debian or Ubuntu)
+
+```sh
+# Neovim 0.12+: download a release from https://github.com/neovim/neovim/releases
+sudo apt install git curl unzip ripgrep fd-find graphviz build-essential
+ln -s "$(command -v fdfind)" ~/.local/bin/fd      # Debian names fd "fdfind"
+
+curl --proto '=https' -sSf https://sh.rustup.rs | sh
+rustup component add rust-analyzer
+# Go: https://go.dev/dl
+# Node 22.18 or later, for example with nvm: nvm install 22
+
+python3 -m pip install debugpy
+python3 -m pip install --target ~/.local/share/nvim/memory-graph memory_graph graphviz
+
+git clone https://github.com/abhiksark/nvim-setup ~/.config/nvim
+nvim                # first launch installs the plugins
+:InstallTools       # inside Neovim: language servers and debug adapters
 ```
-Installation 
 
-brew install neovim
+### Mac
 
-sudo apt install neovim
+```sh
+xcode-select --install                              # C and C++ compilers
+brew install neovim git ripgrep fd graphviz go node python
 
+curl --proto '=https' -sSf https://sh.rustup.rs | sh
+rustup component add rust-analyzer
 
-sudo apt install zsh
+python3 -m pip install debugpy
+python3 -m pip install --target ~/.local/share/nvim/memory-graph memory_graph graphviz
 
-apt-get install fzf
+git clone https://github.com/abhiksark/nvim-setup ~/.config/nvim
+nvim                # first launch installs the plugins
+:InstallTools       # inside Neovim: language servers and debug adapters
+```
 
+### Terminal
 
-sh -c "$(wget https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh -O -)"
+The config is built for [kitty](https://sw.kovidgoyal.net/kitty/). The Python memory
+picture needs kitty, and kitty ships the icon font the file tree uses.
 
+If icons show up as Chinese characters, another installed font is claiming the icon code
+points. Add this line to `kitty.conf` so kitty uses its built-in icon font for them:
 
-git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/powerlevel10k
-echo 'source ~/powerlevel10k/powerlevel10k.zsh-theme' >>~/.zshrc
+```
+symbol_map U+E000-U+F8FF,U+F0000-U+FFFFF Symbols Nerd Font Mono
+```
 
+In other terminals, icons fall back to plain text. To use icons there, install a
+[Nerd Font](https://www.nerdfonts.com/) and set `vim.g.nerd_font = true` at the top of
+`init.lua`.
 
-mkdir ~/.config/nvim
+## Keys
 
-touch ~/.config/nvim/init.vim
+The leader key is Space. Pressing Space, `g`, `[` or `]` and waiting shows what can come
+next.
 
-curl -fLo ~/.config/nvim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+| Key | Action |
+|---|---|
+| Ctrl+P, Space f f | Find a file by name |
+| Space f r | Recent files |
+| Space / | Search text in the project |
+| Ctrl+B, Space e | Show or hide the file tree |
+| Space x x | Error list |
+| Space c f | Format the file |
+| F5, Space r | Run the current file |
+| F6 | Start debugging, or continue to the next breakpoint |
+| F9 | Set or clear a breakpoint |
+| F10 | Step over |
+| F11 | Step into |
+| F4 | Stop debugging and close the panels |
+| F7, F8 | Earlier and later steps of the memory picture (Python) |
+| `gd` | Go to definition |
+| `q` | Close the run output or a panel |
 
-mkdir ~/.config/nvim/vim-plug
+Neovim's built-in language keys also work:
 
-touch ~/.config/nvim/vim-plug/plugins.vim
+| Key | Action |
+|---|---|
+| `K` | Show documentation |
+| `grr` | References |
+| `grn` | Rename |
+| `gra` | Code actions |
+| `gri` | Implementation |
+| `gO` | Symbols in the file |
+| `[d`, `]d` | Previous and next error |
+| `[h`, `]h` | Previous and next git change |
 
-echo "source $HOME/.config/nvim/vim-plug/plugins.vim">>init.vim
- git clone https://github.com/zsh-users/zsh-history-substring-search ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-history-substring-search
-git clone https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
-( cd $ZSH_CUSTOM/plugins && git clone https://github.com/chrissicool/zsh-256color )
+Ctrl+B replaces Vim's page-up; Ctrl+U still scrolls up.
 
- git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
- 
- ```
+## Plugins
+
+Plugins load with Neovim's built-in `vim.pack`, with no other plugin manager.
+
+| Plugin | Why it is here |
+|---|---|
+| [snacks.nvim](https://github.com/folke/snacks.nvim) | File tree, file finder, project search and error list. Only its `explorer` and `picker` modules are on. |
+| [mini.nvim](https://github.com/nvim-mini/mini.nvim) | Bracket pairs, git change marks, branch name, status line, icons and key hints. |
+| [mason.nvim](https://github.com/mason-org/mason.nvim) | Installs language servers and debug adapters on each machine. |
+| [nvim-dap](https://github.com/mfussenegger/nvim-dap) | The debugger. |
+| [nvim-dap-ui](https://github.com/rcarriga/nvim-dap-ui) | The debugger's variables, stack and console panels. |
+| [nvim-dap-python](https://github.com/mfussenegger/nvim-dap-python) | Python debugging through debugpy. |
+| [nvim-nio](https://github.com/nvim-neotest/nvim-nio) | Required by nvim-dap-ui. |
+
+There is no completion plugin and no treesitter. Completion uses Neovim's built-in LSP
+completion, and highlighting uses Vim's syntax files plus the language servers.
+
+## Languages
+
+| Language | Language server | F5 runs | Format on save | Error list covers | Debugger |
+|---|---|---|---|---|---|
+| Python | basedpyright, ruff | `python3 <file>` | yes (ruff) | open files | debugpy |
+| Rust | rust-analyzer | `cargo run` in a Cargo project, otherwise `rustc -g` | yes (rustfmt) | whole project | codelldb |
+| C | clangd | `cc -g -O0 -Wall` | no | open files | codelldb |
+| C++ | clangd | `c++ -std=c++20 -g -O0 -Wall` | no | open files | codelldb |
+| Go | gopls | `go run .` in a module, otherwise `go run <file>` | yes (gofmt) | whole project | delve |
+| JavaScript | vtsls | `node <file>` | no | open files | none |
+| TypeScript | vtsls | `node <file>` | no | open files | none |
+
+Notes:
+
+- Compiled binaries go to `~/.cache/nvim-run/`, never next to the source file.
+- C, C++, JavaScript and TypeScript have no single standard style, so they are not
+  formatted on save. Space c f formats them on demand.
+- F5 compiles one C or C++ file. Projects with several source files are not built.
+- clangd needs `compile_commands.json` to understand a project with several files. CMake
+  writes one with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, and
+  [bear](https://github.com/rizsotto/Bear) generates one for Make. Single files work
+  without it.
+- Node runs TypeScript by removing the types, which needs Node 22.18 or later. It rejects
+  `enum`, `namespace` and constructor parameter properties.
+- F5 does not run TSX files, which need a bundler.
+- A Rust file outside any Cargo project uses rust-analyzer's single-file mode, which
+  covers the `.rs` files in its folder. A `.rs` file added to that folder later needs
+  `:lsp restart`.
+- Mason installs the newest delve, which may not officially support an older Go. The
+  config skips delve's Go version check. If Go debugging misbehaves, update Go.
+- If Neovim is closed while `:InstallTools` is running, a tool can be left half installed.
+  Run `:MasonUninstall <name>`, then `:InstallTools` again.
+
+## Python practice tools
+
+`lua/practice.lua` holds a setup for practicing algorithms in Python:
+
+- F5 runs the file.
+- `:Test` adds a test block for a LeetCode-style `class Solution`. The test imports helpers
+  from `lc.py`, which lives in the practice repo.
+- While debugging, a side panel draws a picture of the program's memory at every stop, and
+  F7 and F8 move through earlier stops.
+
+The memory picture needs kitty, graphviz and the `memory-graph` install line above.
+
+## Adding a language
+
+1. In `init.lua`, add a `vim.lsp.config('<name>', { cmd, filetypes, root_markers })` block
+   and add the name to `vim.lsp.enable`.
+2. Add the server's Mason package name to `tools`, then run `:InstallTools`.
+3. To run files with F5, add a line for the filetype to `runner_for`.
+4. To format on save, add the server name to `format_on_save`.
+
+## Tests
+
+```sh
+test/check.sh                 # startup budget, then headless checks for every feature
+test/check.sh --clean-slate   # install everything into an empty folder (needs network)
+CHECK_ONLY=rust nvim --headless -c 'luafile test/check.lua'   # only matching checks
+```
+
+The checks write sample files to a temporary folder and never touch real projects.

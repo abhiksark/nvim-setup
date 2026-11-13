@@ -2,11 +2,18 @@
 # test/check.sh
 # Checks the startup budget (median of 5 runs under 50 ms), then runs the headless
 # checks in test/check.lua against the config that ~/.config/nvim points to.
+# With --clean-slate, runs test/clean_slate.lua instead (needs network, a few minutes).
 set -eu
 cd "$(dirname "$0")/.."
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+
+# --clean-slate: install plugins and tools into an empty data folder, as on a new machine.
+if [ "${1:-}" = "--clean-slate" ]; then
+  XDG_DATA_HOME="$tmp" nvim --headless -c 'luafile test/clean_slate.lua'
+  exit $?
+fi
 
 for i in 1 2 3 4 5; do
   nvim --headless --startuptime "$tmp/st$i" +qa
