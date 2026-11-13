@@ -127,12 +127,72 @@ vim.keymap.set('n', '<leader>cf', function() vim.lsp.buf.format() end, { desc = 
 local practice = require('practice')
 local dap = require('dap')
 
+-- Run `cmd` in the bottom panel, the way practice.run_python does: each run replaces the
+-- last, you can type into it for input, and q closes it. The shared python_run flag lets
+-- both kinds of run replace each other and count as panels.
+local function run_in_panel(cmd, cwd)
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if vim.b[vim.api.nvim_win_get_buf(win)].python_run then vim.api.nvim_win_close(win, true) end
+  end
+  vim.cmd('botright 12new')
+  vim.b.python_run = true
+  vim.bo.bufhidden = 'wipe'
+  vim.fn.jobstart(cmd, { term = true, cwd = cwd })
+  vim.keymap.set('n', 'q', '<cmd>close<cr>', { buffer = true, desc = 'Close run output' })
+  vim.cmd.startinsert()
+end
+
+-- Compiled binaries live here, one per source file (named by a hash of its full path), so
+-- two main.c files in different folders never share one and none land beside the source.
+local run_cache = vim.fn.expand('~/.cache/nvim-run')
+local compilers = {
+  c = { 'cc', '-g', '-O0', '-Wall' },
+  cpp = { 'c++', '-std=c++20', '-g', '-O0', '-Wall' },
+  rust = { 'rustc', '-g' },
+}
+
+-- The compiler command for a single C, C++ or Rust file, and the binary it writes.
+local function compile_argv(path, ft)
+  local bin = ('%s/%s-%s'):format(run_cache, vim.fn.fnamemodify(path, ':t:r'), vim.fn.sha256(path):sub(1, 8))
+  return vim.list_extend(vim.deepcopy(compilers[ft]), { path, '-o', bin }), bin
+end
+
+-- The command and folder that run `path`, or nil and the reason it can't be run.
+local function runner_for(path, ft)
+  local dir = vim.fs.dirname(path)
+  if ft == 'rust' and vim.fs.root(path, 'Cargo.toml') then
+    return { 'cargo', 'run' }, vim.fs.root(path, 'Cargo.toml')
+  end
+  if compilers[ft] then
+    local argv, bin = compile_argv(path, ft)
+    local compile = table.concat(vim.tbl_map(vim.fn.shellescape, argv), ' ')
+    -- Delete the last binary first, so a failed compile can't run it.
+    local script = ('mkdir -p %s && rm -f %s && %s && exec %s'):format(
+      vim.fn.shellescape(run_cache), vim.fn.shellescape(bin), compile, vim.fn.shellescape(bin))
+    return { 'sh', '-c', script }, dir
+  end
+  if ft == 'go' then return { 'go', 'run', vim.fs.root(path, 'go.mod') and '.' or path }, dir end
+  if ft == 'javascript' or ft == 'typescript' then return { 'node', path }, dir end
+  if ft == 'typescriptreact' then return nil, 'TSX needs a bundler; F5 does not run it' end
+  return nil, 'F5: no runner for ' .. ft
+end
+
+-- A file that F5 and F6 can act on: not a panel, the tree or a scratch buffer.
+local function in_code_file()
+  return not practice.is_panel(vim.api.nvim_get_current_win()) and vim.bo.buftype == ''
+    and vim.api.nvim_buf_get_name(0) ~= ''
+end
+
 -- F5: run the current file in the bottom panel.
 local function run_file()
   if vim.b.python_run then vim.cmd.wincmd('p') end -- pressed from the run panel
+  if not in_code_file() then return vim.notify('F5: open a code file first') end
   local ft = vim.bo.filetype
   if ft == 'python' then return practice.run_python() end
-  vim.notify('F5: no runner for ' .. ft)
+  local cmd, cwd = runner_for(vim.api.nvim_buf_get_name(0), ft)
+  if not cmd then return vim.notify(cwd) end
+  vim.cmd('stopinsert | silent write')
+  run_in_panel(cmd, cwd)
 end
 
 -- F6: start debugging the current file, or continue a paused session.

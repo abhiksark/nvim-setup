@@ -182,6 +182,79 @@ case('format_key', function()
   assert(vim.fn.maparg('<leader>cf', 'n') ~= '', 'Space c f unmapped')
 end)
 
+-- F5 in every language, from folders with spaces in their names.
+local programs = {
+  { 'c', 'c/a.c', '#include <stdio.h>\nint main(void) { puts("hi c"); return 0; }\n' },
+  { 'cpp', 'cpp/a.cpp', '#include <iostream>\nint main() { std::cout << "hi cpp\\n"; }\n' },
+  { 'rust_file', 'rs/a.rs', 'fn main() { println!("hi rust_file"); }\n' },
+  { 'go', 'go/main.go', 'package main\n\nimport "fmt"\n\nfunc main() { fmt.Println("hi go") }\n' },
+  { 'js', 'js/a.js', 'console.log("hi js");\n' },
+  { 'ts', 'ts/a.ts', 'const who: string = "ts";\nconsole.log(`hi ${who}`);\n' },
+}
+local spaced = 'dir with space/'
+sample(spaced .. 'go/go.mod', 'module example.com/hi\n\ngo 1.21\n')
+for _, p in ipairs(programs) do
+  case('run_' .. p[1], function()
+    local out = run_output(sample(spaced .. p[2], p[3]), 60000)
+    assert(out:find('hi ' .. p[1], 1, true), out)
+  end)
+end
+
+case('run_rust_cargo', function()
+  sample(spaced .. 'cargo/Cargo.toml', '[package]\nname = "hi"\nversion = "0.1.0"\nedition = "2021"\n')
+  local out = run_output(sample(spaced .. 'cargo/src/main.rs', 'fn main() { println!("hi cargo"); }\n'), 120000)
+  assert(out:find('hi cargo', 1, true), out)
+end)
+
+case('run_tsx', function()
+  edit(sample(spaced .. 'tsx/a.tsx', 'export const A = () => <div />;\n'))
+  press('<F5>')
+  assert(vim.tbl_contains(notices(), 'TSX needs a bundler; F5 does not run it'), 'no TSX message')
+  assert(#run_windows() == 0, 'a run panel opened')
+end)
+
+case('run_no_file', function()
+  vim.cmd.enew()
+  press('<F5>')
+  assert(table.concat(notices(), '\n'):find('open a code file', 1, true), 'no message')
+end)
+
+case('compile_error', function()
+  local path = sample(spaced .. 'err/a.c', '#include <stdio.h>\nint main(void) { puts("old-output"); }\n')
+  assert(run_output(path, 60000):find('old-output', 1, true), 'first run failed')
+  vim.cmd('silent! only | silent! %bwipeout!')
+  sample(spaced .. 'err/a.c', 'int main(void) { return 1 }\n')
+  local out = run_output(path, 60000)
+  assert(out:find('error', 1, true), out)
+  assert(not out:find('old-output', 1, true), 'ran the old binary: ' .. out)
+end)
+
+case('same_name', function()
+  local x = sample('x/main.c', '#include <stdio.h>\nint main(void) { puts("from-x"); }\n')
+  local y = sample('y/main.c', '#include <stdio.h>\nint main(void) { puts("from-y"); }\n')
+  for _, step in ipairs({ { x, 'from-x' }, { y, 'from-y' }, { x, 'from-x' } }) do
+    vim.cmd('silent! only | silent! %bwipeout!')
+    local out = run_output(step[1], 60000)
+    assert(out:find(step[2], 1, true), out)
+  end
+end)
+
+case('rerun_replaces', function()
+  edit(sample('py/wait.py', 'input("name? ")\n'))
+  press('<F5>')
+  vim.cmd.stopinsert()
+  press('<F5>')
+  vim.cmd.stopinsert()
+  assert(#run_windows() == 1, #run_windows() .. ' run windows')
+end)
+
+case('no_binary_beside_source', function()
+  local path = sample('alone/a.c', '#include <stdio.h>\nint main(void) { puts("alone"); }\n')
+  assert(run_output(path, 60000):find('alone', 1, true), 'run failed')
+  local names = vim.fn.readdir(vim.fs.dirname(path))
+  assert(#names == 1 and names[1] == 'a.c', vim.inspect(names))
+end)
+
 -- Errors raised in callbacks outside a case's pcall land in :messages.
 case('messages_clean', function()
   local messages = vim.fn.execute('messages')
